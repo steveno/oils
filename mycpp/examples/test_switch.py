@@ -6,12 +6,13 @@ from __future__ import print_function
 
 import os
 
-from mycpp.mylib import switch, str_switch, log
-#from mycpp.mylib import switch, log
+#from mycpp.mylib import switch, str_switch, log
+from mycpp.mylib import switch, log
 
 def TestString(s):
     # type: (str) -> None
 
+    print('''
     with str_switch(s) as case:
         # Problem: if you switch on length, do you duplicate the bogies
         if case('spam', 'different len'):
@@ -23,6 +24,7 @@ def TestString(s):
 
         else:
             print('neither')
+            ''')
 
 
 def run_tests():

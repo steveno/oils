@@ -1,5 +1,122 @@
-Pretty Printing
-===============
+Up to 4 Pretty Printers?
+========================
+
+Date: 2024-02
+
+## Intro 
+
+Oils has a LOT of text parsing, and it's becoming apparent than we also need a
+lot printing too!
+
+And a shell is a user interface, so the printed text has to be reasonably
+formatted.
+
+---
+
+This doc describes 4 possible pretty printers in Oils.  (Traditional shells
+don't have appear to have **any** pretty printing.)
+
+I'm writing it organize my thoughts -- particularly to explain the problem
+requirements to contributors.
+
+Note: sometimes I pile on too many requirements, which I mentioned in the
+latest release announcement:
+
+- <https://www.oilshell.org/blog/2024/02/release-0.20.0.html#zulip-why-am-i-working-on-json>
+
+## Background
+
+There are at least two schools of thought on pretty printers, which are
+discussed in this lobste.rs thread:
+
+- <https://lobste.rs/s/aevptj/why_is_prettier_rock_solid>
+- HN comments on same story: <https://news.ycombinator.com/item?id=39437424>
+  - (Top comment reveals why pretty-printing is hard - users are opinionated,
+    and it can be **slow**.)
+
+More here:
+
+- <https://lobste.rs/s/1r0aak/twist_on_wadler_s_printer>
+
+Let's call them the `go fmt` style and the "functional pretty pretty language"
+or PPL style.
+
+I'm probably "biased" toward `go fmt`, as the two formatters we actually
+**use** in Oils are influenced by it (although importantly, they add line wrapping):
+
+- `clang-format` for our C++ code.  This is the best formatter I've used.
+- `yapf` for our Python code.  It is intentionally a "clone" for `clang-format`.
+
+These could also be called formatters that use the "graph search" paradigm, but
+that describes what they do for **line wrapping**, which I think of as a
+**subset** of pretty printing.
+
+There are also a bunch of Zulip threads where I "took notes" on pretty printing:
+
+- TODO
+
+---
+
+However, the PPL style is appealing for a few reasons:
+
+- There's really no "user layout" for data structures like JSON (untyped) and
+  Zephyr ASDL (typed).  So a layout can be synthesized from scratch.
+- I think we should use PPL for the **expression subproblem** of a shell
+  formatter (OSH, YSH, or ideally both).
+- The PPL style separates policy (language rules) and mechanism (line
+  wrapping), and we have multiple languages to format.  So we should try this
+  more principled architecture, hopefully without sacrificing quality for
+  particular langauges.
+
+## Summary of Four Formatters
+
+(1) YSH data, which are dynamically typed JSON-like values
+
+**Motivation**: We should look as good as `node.js` or `jq`.  TODO: add
+screenshots.
+
+(2) Replace the existing Zephyr ASDL pretty printer 
+
+The algorithm is in `asdl/format.py`, and the code is in `asdl/hnode.asdl`.
+This is an ad hoc line wrapper which I wrote several years ago.  TODO: I
+believe it can be very slow, measure it.
+
+The slowness didn't really matter because it's not user facing -- this format
+is only debugging Oils itself.  But it's very useful, and we may want to expose
+it to users.
+
+**Motivation**: We already wrote an ad hoc pretty printer!  It seems like this
+should "obviously" be unified
+
+(3) Export the Oils Syntax Tree with "NIL8"  (data)
+
+**Motivations**:
+
+- Expose a stable format for users.  They should be able to reuse all the hard
+  work we did on parsing shell.
+- Is NIL8 a good idea?
+  - NIL8 Isn't Lisp
+  - Narrow Intermediate Language
+- We also plan to use NIL8 as a WebAssembly-text-format-like IR for
+
+Note: the graph has layers like this:
+
+1. `source_t` describes whether shell code comes from `foo.sh` or `ysh -c 'echo mycode'`
+2. `SourceLine` represents physical lines
+3. `Token` represents portions of lines
+4. Then we have the Lossless Syntax Tree of `command_t word_t word_part_t
+   expr_t`
+
+### Order of implementation
+
+It makes sense to do (1) and then (2).
+
+(3) and (4) can be done in any order, or not at all.
+
+Note: The first two printers are "engineering", but (3) and (4) are more
+**experimental**.  Especially (3).
+
+## Notes
 
 Notes on unifying pretty printing for 
 
