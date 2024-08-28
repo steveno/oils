@@ -323,11 +323,9 @@ class ArithEvaluator(object):
         # type: () -> None
         assert self.word_ev is not None
 
-    def _StringToBigInt(self, s, blame_loc):
+    def _WordToBigInt(self, s, blame_loc):
         # type: (str, loc_t) -> mops.BigInt
-        """Use bash-like rules to coerce a string to an integer.
-
-        Runtime parsing enables silly stuff like $(( $(echo 1)$(echo 2) + 1 )) => 13
+        """Use bash-like rules to coerce a word to an integer.
 
         0xAB -- hex constant
         042  -- octal constant
@@ -389,54 +387,63 @@ class ArithEvaluator(object):
             # Normal base 10 integer.  This includes negative numbers like '-42'.
             integer = mops.FromStr(s)
         except ValueError:
-            # doesn't look like an integer
+            e_die("Invalid integer constant %r" % s, blame_loc)
 
-            # note: 'test' and '[' never evaluate recursively
-            if self.parse_ctx:
-                arena = self.parse_ctx.arena
+        return integer
 
-                # Special case so we don't get EOF error
-                if len(s.strip()) == 0:
-                    return mops.ZERO
+    def _StringToBigInt(self, s, blame_loc):
+        # type: (str, loc_t) -> mops.BigInt
+        """Use bash-like rules to coerce a string to an integer.
 
-                # For compatibility: Try to parse it as an expression and evaluate it.
-                a_parser = self.parse_ctx.MakeArithParser(s)
+        Runtime parsing enables silly stuff like $(( $(echo 1)$(echo 2) + 1 )) => 13
 
-                # TODO: Fill in the variable name
-                with alloc.ctx_SourceCode(arena,
-                                          source.Variable(None, blame_loc)):
-                    try:
-                        node2 = a_parser.Parse()  # may raise error.Parse
-                    except error.Parse as e:
-                        self.errfmt.PrettyPrintError(e)
-                        e_die('Parse error in recursive arithmetic',
-                              e.location)
-
-                # Prevent infinite recursion of $(( 1x )) -- it's a word that evaluates
-                # to itself, and you don't want to reparse it as a word.
-                if node2.tag() == arith_expr_e.Word:
-                    e_die("Invalid integer constant %r" % s, blame_loc)
-
-                if self.exec_opts.eval_unsafe_arith():
-                    integer = self.EvalToBigInt(node2)
-                else:
-                    # BoolEvaluator doesn't have parse_ctx or mutable_opts
-                    assert self.mutable_opts is not None
-
-                    # We don't need to flip _allow_process_sub, because they can't be
-                    # parsed.  See spec/bugs.test.sh.
-                    with state.ctx_Option(self.mutable_opts,
-                                          [option_i._allow_command_sub],
-                                          False):
-                        integer = self.EvalToBigInt(node2)
-
+        bare word: variable
+        quoted word: string
+        """
+        if self.parse_ctx is None:
+            if len(s.strip()) == 0 or match.IsValidVarName(s):
+                # x42 could evaluate to 0
+                e_strict("Invalid integer constant %r" % s, blame_loc)
             else:
-                if len(s.strip()) == 0 or match.IsValidVarName(s):
-                    # x42 could evaluate to 0
-                    e_strict("Invalid integer constant %r" % s, blame_loc)
-                else:
-                    # 42x is always fatal!
-                    e_die("Invalid integer constant %r" % s, blame_loc)
+                # 42x is always fatal!
+                e_die("Invalid integer constant %r" % s, blame_loc)
+
+        arena = self.parse_ctx.arena
+
+        # Special case so we don't get EOF error
+        if len(s.strip()) == 0:
+            return mops.ZERO
+
+        # For compatibility: Try to parse it as an expression and evaluate it.
+        a_parser = self.parse_ctx.MakeArithParser(s)
+
+        # TODO: Fill in the variable name
+        with alloc.ctx_SourceCode(arena,
+                                  source.Variable(None, blame_loc)):
+            try:
+                node2 = a_parser.Parse()  # may raise error.Parse
+            except error.Parse as e:
+                self.errfmt.PrettyPrintError(e)
+                e_die('Parse error in recursive arithmetic',
+                      e.location)
+
+        # Prevent infinite recursion of $(( 1x )) -- it's a word that evaluates
+        # to itself, and you don't want to reparse it as a word.
+        if node2.tag() == arith_expr_e.Word:
+            return self._WordToBigInt(s, blame_loc)
+
+        if self.exec_opts.eval_unsafe_arith():
+            integer = self.EvalToBigInt(node2)
+        else:
+            # BoolEvaluator doesn't have parse_ctx or mutable_opts
+            assert self.mutable_opts is not None
+
+            # We don't need to flip _allow_process_sub, because they can't be
+            # parsed.  See spec/bugs.test.sh.
+            with state.ctx_Option(self.mutable_opts,
+                                  [option_i._allow_command_sub],
+                                  False):
+                integer = self.EvalToBigInt(node2)
 
         return integer
 
