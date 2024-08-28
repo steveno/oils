@@ -400,13 +400,9 @@ class ArithEvaluator(object):
         bare word: variable
         quoted word: string
         """
+        # note: 'test' and '[' never evaluate recursively
         if self.parse_ctx is None:
-            if len(s.strip()) == 0 or match.IsValidVarName(s):
-                # x42 could evaluate to 0
-                e_strict("Invalid integer constant %r" % s, blame_loc)
-            else:
-                # 42x is always fatal!
-                e_die("Invalid integer constant %r" % s, blame_loc)
+            return self._WordToBigInt(s, blame_loc)
 
         arena = self.parse_ctx.arena
 
