@@ -323,26 +323,24 @@ class ArithEvaluator(object):
         # type: () -> None
         assert self.word_ev is not None
 
-    def _WordToBigInt(self, s, blame_loc):
+    def _ParseInt(self, s, blame_loc):
         # type: (str, loc_t) -> mops.BigInt
-        """Use bash-like rules to coerce a word to an integer.
+        """Parse an integer literal in a bash arith string.
 
         0xAB -- hex constant
         042  -- octal constant
         42   -- decimal constant
         64#z -- arbitrary base constant
-
-        bare word: variable
-        quoted word: string (not done?)
         """
+        # hex constant
         if s.startswith('0x'):
             try:
                 integer = mops.FromStr(s, 16)
             except ValueError:
                 e_strict('Invalid hex constant %r' % s, blame_loc)
-            # TODO: don't truncate
             return integer
 
+        # octal constant
         if s.startswith('0'):
             try:
                 integer = mops.FromStr(s, 8)
@@ -350,7 +348,10 @@ class ArithEvaluator(object):
                 e_strict('Invalid octal constant %r' % s, blame_loc)
             return integer
 
-        b, digits = mylib.split_once(s, '#')  # see if it has #
+        # arbitrary base constant
+        # syntax: base#digits
+        # where base <= 64 and digits ~ / [0-9 a-z A-Z @ _]+ /
+        b, digits = mylib.split_once(s, '#')
         if digits is not None:
             try:
                 base = int(b)  # machine integer, not BigInt
@@ -384,7 +385,7 @@ class ArithEvaluator(object):
             return integer
 
         try:
-            # Normal base 10 integer.  This includes negative numbers like '-42'.
+            # decimal constant
             integer = mops.FromStr(s)
         except ValueError:
             e_die("Invalid integer constant %r" % s, blame_loc)
@@ -393,40 +394,43 @@ class ArithEvaluator(object):
 
     def _StringToBigInt(self, s, blame_loc):
         # type: (str, loc_t) -> mops.BigInt
-        """Use bash-like rules to coerce a string to an integer.
+        """Dynamically parse and evaluate a bash arith expression.
 
-        Runtime parsing enables silly stuff like $(( $(echo 1)$(echo 2) + 1 )) => 13
+        Runtime parsing enables silly stuff like
 
-        bare word: variable
-        quoted word: string
+            $(( $(echo 1)$(echo 2) + 1 )) => 13
+
+        This is called recursively. So a substitution such as
+
+            $(( 1 + 0x2 + 03 ))
+
+        in turn calls:
+          _StringToBigInt('1 + 0x2 + 03')
+            > _StringToBigInt('1')
+            > _StringToBigInt('0x2')
+            > _StringToBigInt('03')
         """
-        # note: 'test' and '[' never evaluate recursively
+        # True when evaluating expressions inside 'test' and '['. They only
+        # expect an integer literal, not an arbitrary expression.
         if self.parse_ctx is None:
-            return self._WordToBigInt(s, blame_loc)
-
-        arena = self.parse_ctx.arena
+            return self._ParseInt(s, blame_loc)
 
         # Special case so we don't get EOF error
         if len(s.strip()) == 0:
             return mops.ZERO
 
-        # For compatibility: Try to parse it as an expression and evaluate it.
+        # Dynamically parse for compatibility
         a_parser = self.parse_ctx.MakeArithParser(s)
+        try:
+            node2 = a_parser.Parse()  # may raise error.Parse
+        except error.Parse as e:
+            self.errfmt.PrettyPrintError(e)
+            e_die('Parse error in recursive arithmetic',
+                  e.location)
 
-        # TODO: Fill in the variable name
-        with alloc.ctx_SourceCode(arena,
-                                  source.Variable(None, blame_loc)):
-            try:
-                node2 = a_parser.Parse()  # may raise error.Parse
-            except error.Parse as e:
-                self.errfmt.PrettyPrintError(e)
-                e_die('Parse error in recursive arithmetic',
-                      e.location)
-
-        # Prevent infinite recursion of $(( 1x )) -- it's a word that evaluates
-        # to itself, and you don't want to reparse it as a word.
+        # This is just a single word, try to parse it as an integer literal
         if node2.tag() == arith_expr_e.Word:
-            return self._WordToBigInt(s, blame_loc)
+            return self._ParseInt(s, blame_loc)
 
         if self.exec_opts.eval_unsafe_arith():
             integer = self.EvalToBigInt(node2)
