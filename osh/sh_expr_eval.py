@@ -410,7 +410,6 @@ class ArithEvaluator(object):
             > _StringToBigInt('0x2')
             > _StringToBigInt('03')
         """
-        print(s)
         # True when evaluating expressions inside 'test' and '['. They only
         # expect an integer literal, not an arbitrary expression.
         if self.parse_ctx is None:
