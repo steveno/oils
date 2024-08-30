@@ -402,7 +402,7 @@ class ArithEvaluator(object):
 
         This is called recursively. So a substitution such as
 
-            $(( 1 + 0x2 + 03 ))
+            $(( "1 + 0x2 + 03" ))
 
         in turn calls:
           _StringToBigInt('1 + 0x2 + 03')
@@ -410,6 +410,7 @@ class ArithEvaluator(object):
             > _StringToBigInt('0x2')
             > _StringToBigInt('03')
         """
+        print(s)
         # True when evaluating expressions inside 'test' and '['. They only
         # expect an integer literal, not an arbitrary expression.
         if self.parse_ctx is None:
