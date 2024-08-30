@@ -425,8 +425,7 @@ class ArithEvaluator(object):
             node2 = a_parser.Parse()  # may raise error.Parse
         except error.Parse as e:
             self.errfmt.PrettyPrintError(e)
-            e_die('Parse error in recursive arithmetic',
-                  e.location)
+            e_die('Parse error in recursive arithmetic', e.location)
 
         # This is just a single word, try to parse it as an integer literal
         if node2.tag() == arith_expr_e.Word:
@@ -441,8 +440,7 @@ class ArithEvaluator(object):
             # We don't need to flip _allow_process_sub, because they can't be
             # parsed.  See spec/bugs.test.sh.
             with state.ctx_Option(self.mutable_opts,
-                                  [option_i._allow_command_sub],
-                                  False):
+                                  [option_i._allow_command_sub], False):
                 integer = self.EvalToBigInt(node2)
 
         return integer
